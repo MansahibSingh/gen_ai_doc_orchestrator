@@ -25,33 +25,25 @@ def extract_text(file):
             text = "".join(page.extract_text() or "" for page in pdf.pages)
         return text
     else:
-        return file.read().decode("utf-8")
+        return file.read().decode("utf-8", errors="ignore")
 
 
 # ==============================
-# CLEAN JSON FUNCTION (FINAL FIX)
+# CLEAN JSON FUNCTION
 # ==============================
 def clean_json(text):
     try:
-        # Extract JSON block
+        text = text.replace("```json", "").replace("```", "").strip()
+
         match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            return text
-
-        json_text = match.group()
-
-        # 🔥 REMOVE NUMBERED KEYS (0:, 1:, etc.)
-        json_text = re.sub(r'\b\d+\s*:\s*', '', json_text)
+        if match:
+            text = match.group()
 
         # Remove trailing commas
-        json_text = re.sub(r",\s*}", "}", json_text)
-        json_text = re.sub(r",\s*]", "]", json_text)
+        text = re.sub(r",\s*}", "}", text)
+        text = re.sub(r",\s*]", "]", text)
 
-        # Remove markdown if present
-        json_text = json_text.replace("```json", "").replace("```", "")
-
-        return json_text.strip()
-
+        return text.strip()
     except Exception:
         return text
 
@@ -61,16 +53,12 @@ def clean_json(text):
 # ==============================
 if st.button("Extract Information"):
 
-    if not uploaded_file or not question:
+    if not uploaded_file or not question.strip():
         st.error("Please upload a document and enter a question.")
         st.stop()
 
-    # Extract text
     text = extract_text(uploaded_file)
 
-    # ==============================
-    # STRICT PROMPT
-    # ==============================
     prompt = f"""
 You are a strict JSON generator.
 
@@ -78,14 +66,15 @@ TASK:
 Extract ONLY the key skills from the document based on the question.
 
 RULES:
-- Output ONLY JSON
+- Output ONLY valid JSON
 - No explanation
 - No markdown
 - No backticks
 - No text before or after JSON
 - Use double quotes
-- Do NOT add numbering (no 0:, 1:, etc.)
+- No numbering
 - No trailing commas
+- Return only one JSON object
 
 FORMAT:
 {{
@@ -99,9 +88,6 @@ Question:
 {question}
 """
 
-    # ==============================
-    # GEMINI API CALL
-    # ==============================
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
     headers = {
@@ -126,17 +112,19 @@ Question:
 
         st.subheader("AI Extracted Output")
 
-        # Extract model output
         output = res_json["candidates"][0]["content"]["parts"][0]["text"]
-
-        # ==============================
-        # CLEAN + PARSE JSON
-        # ==============================
         clean_output = clean_json(output)
 
         try:
             parsed = json.loads(clean_output)
+
+            # Cleaner display for your screenshot style
             st.json(parsed)
+
+            # Optional: show skills without Streamlit list indices
+            st.markdown("### Key Skills")
+            for skill in parsed.get("key_skills", []):
+                st.write(f"- {skill}")
 
         except json.JSONDecodeError:
             st.error("Response was not valid JSON")
