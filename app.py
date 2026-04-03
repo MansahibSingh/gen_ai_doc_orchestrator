@@ -1,10 +1,10 @@
 import streamlit as st
 import pdfplumber
+import google.generativeai as genai
 import json
-from google import genai
 
-# Configure client
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+# Configure API key
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
 st.title("AI Document Orchestrator")
 
@@ -25,6 +25,9 @@ def extract_text(file):
 if st.button("Extract Information"):
     if uploaded_file and question:
         text = extract_text(uploaded_file)
+
+        # ✅ Stable working model
+        model = genai.GenerativeModel("gemini-pro")
 
         prompt = f"""
         You are an AI data extractor.
@@ -47,15 +50,12 @@ if st.button("Extract Information"):
         """
 
         try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt
-            )
-
+            response = model.generate_content(prompt)
             output = response.text
 
             st.subheader("AI Extracted Output")
 
+            # Try parsing JSON
             try:
                 parsed = json.loads(output)
                 st.json(parsed)
