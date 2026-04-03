@@ -69,11 +69,11 @@ def clean_json(text):
         return text
 
 # ==============================
-# GEMINI CALL WITH RETRY
+# GEMINI CALL WITH RETRY + FIXED MODEL
 # ==============================
 def call_gemini(prompt):
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent"
 
     headers = {
         "Content-Type": "application/json",
@@ -88,9 +88,9 @@ def call_gemini(prompt):
         ]
     }
 
-    for attempt in range(3):  # retry 3 times
+    for attempt in range(3):
         try:
-            time.sleep(2)  # 🔥 prevent rate limit
+            time.sleep(2)  # prevent rate limit
 
             response = requests.post(url, headers=headers, json=body, timeout=30)
 
@@ -98,6 +98,10 @@ def call_gemini(prompt):
                 st.warning("⏳ Rate limit hit... retrying")
                 time.sleep(5)
                 continue
+
+            if response.status_code == 404:
+                st.error("❌ Model not found. Check API key or model name.")
+                return None
 
             response.raise_for_status()
             return response.json()
@@ -112,7 +116,7 @@ def call_gemini(prompt):
 # ==============================
 if st.button("Extract Information"):
 
-    # ⛔ throttle multiple clicks
+    # Prevent rapid clicks
     if time.time() - st.session_state.last_call_time < 3:
         st.warning("⏳ Please wait before making another request")
         st.stop()
@@ -156,6 +160,9 @@ OUTPUT FORMAT:
         with st.spinner("Processing document..."):
             res_json = call_gemini(prompt)
 
+        if res_json is None:
+            st.stop()
+
         output = res_json["candidates"][0]["content"]["parts"][0]["text"]
         clean_output = clean_json(output)
 
@@ -197,6 +204,7 @@ if send_clicked:
 
         if response.status_code == 200:
             st.success("✅ Report generated and sent successfully to your email.")
+
         else:
             st.error(f"Webhook failed: {response.status_code}")
             st.write(response.text)
