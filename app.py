@@ -25,8 +25,8 @@ if st.button("Extract Information"):
     if uploaded_file and question:
         text = extract_text(uploaded_file)
 
-        # ✅ Updated working model
-        model = genai.GenerativeModel("models/gemini-1.5-flash")
+        # ✅ Correct model (NO "models/" prefix)
+        model = genai.GenerativeModel("gemini-1.5-flash")
 
         prompt = f"""
         Extract relevant information from the document based on the question.
@@ -38,11 +38,14 @@ if st.button("Extract Information"):
         {question}
 
         Return ONLY valid JSON.
+        No explanation.
         """
 
         try:
             response = model.generate_content(prompt)
-            output = response.text
+
+            # ✅ safer way to extract text
+            output = response.candidates[0].content.parts[0].text
 
             st.subheader("AI Extracted Output")
 
