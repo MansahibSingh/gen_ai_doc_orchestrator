@@ -3,6 +3,7 @@ import pdfplumber
 import requests
 import json
 import re
+import time
 
 # ==============================
 # CONFIG
@@ -25,6 +26,9 @@ email = st.text_input("Enter your email for report *")
 # ==============================
 if "parsed_data" not in st.session_state:
     st.session_state.parsed_data = None
+
+if "last_call_time" not in st.session_state:
+    st.session_state.last_call_time = 0
 
 # ==============================
 # EMAIL VALIDATION
@@ -65,9 +69,55 @@ def clean_json(text):
         return text
 
 # ==============================
+# GEMINI CALL WITH RETRY
+# ==============================
+def call_gemini(prompt):
+
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
+    headers = {
+        "Content-Type": "application/json",
+        "x-goog-api-key": API_KEY
+    }
+
+    body = {
+        "contents": [
+            {
+                "parts": [{"text": prompt}]
+            }
+        ]
+    }
+
+    for attempt in range(3):  # retry 3 times
+        try:
+            time.sleep(2)  # 🔥 prevent rate limit
+
+            response = requests.post(url, headers=headers, json=body, timeout=30)
+
+            if response.status_code == 429:
+                st.warning("⏳ Rate limit hit... retrying")
+                time.sleep(5)
+                continue
+
+            response.raise_for_status()
+            return response.json()
+
+        except Exception as e:
+            if attempt == 2:
+                raise e
+            time.sleep(3)
+
+# ==============================
 # EXTRACT BUTTON
 # ==============================
 if st.button("Extract Information"):
+
+    # ⛔ throttle multiple clicks
+    if time.time() - st.session_state.last_call_time < 3:
+        st.warning("⏳ Please wait before making another request")
+        st.stop()
+
+    st.session_state.last_call_time = time.time()
 
     if not uploaded_file or not question.strip():
         st.error("Please upload a document and enter a question.")
@@ -75,7 +125,6 @@ if st.button("Extract Information"):
 
     text = extract_text(uploaded_file)
 
-    # 🔥 DYNAMIC PROMPT
     prompt = f"""
 You are an intelligent document analysis assistant.
 
@@ -93,8 +142,7 @@ RULES:
 - No explanation
 - No markdown
 - No backticks
-- Use structured format
-- Keep output concise and relevant
+- Keep output concise
 
 OUTPUT FORMAT:
 {{
@@ -104,60 +152,22 @@ OUTPUT FORMAT:
 }}
 """
 
-    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
-
-    headers = {
-        "Content-Type": "application/json",
-        "x-goog-api-key": API_KEY
-    }
-
-    body = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": prompt}
-                ]
-            }
-        ]
-    }
-
     try:
         with st.spinner("Processing document..."):
-            resp = requests.post(url, headers=headers, json=body, timeout=30)
-            resp.raise_for_status()
-            res_json = resp.json()
+            res_json = call_gemini(prompt)
 
         output = res_json["candidates"][0]["content"]["parts"][0]["text"]
         clean_output = clean_json(output)
 
-        try:
-            parsed = json.loads(clean_output)
-            st.session_state.parsed_data = parsed
+        parsed = json.loads(clean_output)
+        st.session_state.parsed_data = parsed
 
-            st.subheader("AI Extracted Output")
-            st.json(parsed)
+        st.subheader("AI Extracted Output")
+        st.json(parsed)
 
-            # 🔥 SMART DISPLAY
-            if "data" in parsed:
-                data = parsed["data"]
-
-                st.markdown("### Extracted Information")
-
-                for key, value in data.items():
-                    st.markdown(f"#### {key.capitalize()}")
-
-                    if isinstance(value, list):
-                        for item in value:
-                            if isinstance(item, dict):
-                                st.write(item)
-                            else:
-                                st.write(f"- {item}")
-                    else:
-                        st.write(value)
-
-        except json.JSONDecodeError:
-            st.error("Response was not valid JSON")
-            st.code(output)
+    except json.JSONDecodeError:
+        st.error("Invalid JSON from model")
+        st.code(output)
 
     except Exception as e:
         st.error(f"Request error: {e}")
@@ -176,18 +186,6 @@ send_clicked = st.button(
 
 if send_clicked:
 
-    if not st.session_state.parsed_data:
-        st.error("Please extract data first.")
-        st.stop()
-
-    if not email:
-        st.error("❌ Email is required.")
-        st.stop()
-
-    if not is_valid_email(email):
-        st.error("❌ Please enter a valid email address.")
-        st.stop()
-
     payload = {
         "question": question,
         "extracted_json": st.session_state.parsed_data,
@@ -199,10 +197,6 @@ if send_clicked:
 
         if response.status_code == 200:
             st.success("✅ Report generated and sent successfully to your email.")
-
-            with st.expander("View technical response"):
-                st.code(response.text)
-
         else:
             st.error(f"Webhook failed: {response.status_code}")
             st.write(response.text)
