@@ -1,17 +1,17 @@
 import streamlit as st
 import pdfplumber
-import google.generativeai as genai
 import json
+from google import genai
 
-# Configure API key
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+# Configure client
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
 st.title("AI Document Orchestrator")
 
 uploaded_file = st.file_uploader("Upload a document", type=["pdf", "txt"])
 question = st.text_input("Ask a question about the document")
 
-# Function to extract text
+# Extract text
 def extract_text(file):
     if file.type == "application/pdf":
         with pdfplumber.open(file) as pdf:
@@ -26,43 +26,41 @@ if st.button("Extract Information"):
     if uploaded_file and question:
         text = extract_text(uploaded_file)
 
-        # ✅ Use correct model
-        model = genai.GenerativeModel("gemini-1.5-flash")
-
-        # ✅ Better prompt for structured JSON
         prompt = f"""
         You are an AI data extractor.
 
-        Given the document below:
+        Given the document:
         {text}
 
-        And the user question:
+        And the question:
         {question}
 
-        Extract only the most relevant information.
+        Extract only relevant information.
 
-        Return STRICTLY in valid JSON format.
-        Do not add explanation.
+        Return STRICTLY valid JSON.
+        No explanation.
 
-        Example format:
+        Example:
         {{
-            "field_1": "value",
-            "field_2": "value"
+            "key": "value"
         }}
         """
 
         try:
-            response = model.generate_content(prompt)
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt
+            )
+
             output = response.text
 
             st.subheader("AI Extracted Output")
 
-            # Try to parse JSON
             try:
-                parsed_json = json.loads(output)
-                st.json(parsed_json)  # nice formatted view
+                parsed = json.loads(output)
+                st.json(parsed)
             except:
-                st.write(output)  # fallback if not proper JSON
+                st.write(output)
 
         except Exception as e:
             st.error(f"Error: {e}")
