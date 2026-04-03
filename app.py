@@ -11,7 +11,6 @@ st.title("AI Document Orchestrator")
 uploaded_file = st.file_uploader("Upload a document", type=["pdf", "txt"])
 question = st.text_input("Ask a question about the document")
 
-# Extract text
 def extract_text(file):
     if file.type == "application/pdf":
         with pdfplumber.open(file) as pdf:
@@ -26,27 +25,19 @@ if st.button("Extract Information"):
     if uploaded_file and question:
         text = extract_text(uploaded_file)
 
-        # ✅ Stable working model
-        model = genai.GenerativeModel("gemini-pro")
+        # ✅ Updated working model
+        model = genai.GenerativeModel("models/gemini-1.5-flash")
 
         prompt = f"""
-        You are an AI data extractor.
+        Extract relevant information from the document based on the question.
 
-        Given the document:
+        Document:
         {text}
 
-        And the question:
+        Question:
         {question}
 
-        Extract only relevant information.
-
-        Return STRICTLY valid JSON.
-        No explanation.
-
-        Example:
-        {{
-            "key": "value"
-        }}
+        Return ONLY valid JSON.
         """
 
         try:
@@ -55,7 +46,6 @@ if st.button("Extract Information"):
 
             st.subheader("AI Extracted Output")
 
-            # Try parsing JSON
             try:
                 parsed = json.loads(output)
                 st.json(parsed)
