@@ -1,3 +1,4 @@
 streamlit
 pdfplumber
-requests
+google-genai>=1.69.0
+requests  
