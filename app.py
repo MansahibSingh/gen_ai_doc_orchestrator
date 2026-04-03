@@ -29,7 +29,7 @@ def extract_text(file):
 
 
 # ==============================
-# CLEAN JSON FUNCTION (IMPORTANT)
+# CLEAN JSON FUNCTION (FINAL FIX)
 # ==============================
 def clean_json(text):
     try:
@@ -40,11 +40,14 @@ def clean_json(text):
 
         json_text = match.group()
 
+        # 🔥 REMOVE NUMBERED KEYS (0:, 1:, etc.)
+        json_text = re.sub(r'\b\d+\s*:\s*', '', json_text)
+
         # Remove trailing commas
         json_text = re.sub(r",\s*}", "}", json_text)
         json_text = re.sub(r",\s*]", "]", json_text)
 
-        # Remove unwanted markdown if present
+        # Remove markdown if present
         json_text = json_text.replace("```json", "").replace("```", "")
 
         return json_text.strip()
@@ -66,7 +69,7 @@ if st.button("Extract Information"):
     text = extract_text(uploaded_file)
 
     # ==============================
-    # PROMPT (STRICT JSON)
+    # STRICT PROMPT
     # ==============================
     prompt = f"""
 You are a strict JSON generator.
@@ -81,6 +84,7 @@ RULES:
 - No backticks
 - No text before or after JSON
 - Use double quotes
+- Do NOT add numbering (no 0:, 1:, etc.)
 - No trailing commas
 
 FORMAT:
@@ -96,7 +100,7 @@ Question:
 """
 
     # ==============================
-    # GEMINI API CALL (FIXED MODEL)
+    # GEMINI API CALL
     # ==============================
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
