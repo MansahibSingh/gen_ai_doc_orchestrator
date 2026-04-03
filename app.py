@@ -13,8 +13,11 @@ N8N_WEBHOOK_URL = st.secrets["N8N_WEBHOOK_URL"]
 st.set_page_config(page_title="AI Document Orchestrator", layout="centered")
 st.title("AI Document Orchestrator (REST)")
 
+# ==============================
+# INPUTS
+# ==============================
 uploaded_file = st.file_uploader("Upload a document", type=["pdf", "txt"])
-question = st.text_input("Ask a question about the document")
+question = st.text_input("Ask what you want to extract (e.g. skills, summary, experience)")
 email = st.text_input("Enter your email for report *")
 
 # ==============================
@@ -23,7 +26,6 @@ email = st.text_input("Enter your email for report *")
 if "parsed_data" not in st.session_state:
     st.session_state.parsed_data = None
 
-
 # ==============================
 # EMAIL VALIDATION
 # ==============================
@@ -31,12 +33,8 @@ def is_valid_email(email):
     pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
     return re.match(pattern, email)
 
-
-# Live validation feedback
-if email:
-    if not is_valid_email(email):
-        st.warning("⚠️ Please enter a valid email address")
-
+if email and not is_valid_email(email):
+    st.warning("⚠️ Please enter a valid email address")
 
 # ==============================
 # TEXT EXTRACTION
@@ -44,11 +42,9 @@ if email:
 def extract_text(file):
     if file.type == "application/pdf":
         with pdfplumber.open(file) as pdf:
-            text = "".join(page.extract_text() or "" for page in pdf.pages)
-        return text
+            return "".join(page.extract_text() or "" for page in pdf.pages)
     else:
         return file.read().decode("utf-8", errors="ignore")
-
 
 # ==============================
 # CLEAN JSON FUNCTION
@@ -65,9 +61,8 @@ def clean_json(text):
         text = re.sub(r",\s*]", "]", text)
 
         return text.strip()
-    except Exception:
+    except:
         return text
-
 
 # ==============================
 # EXTRACT BUTTON
@@ -80,32 +75,33 @@ if st.button("Extract Information"):
 
     text = extract_text(uploaded_file)
 
+    # 🔥 DYNAMIC PROMPT
     prompt = f"""
-You are a strict JSON generator.
+You are an intelligent document analysis assistant.
 
 TASK:
-Extract ONLY the key skills from the document based on the question.
+Extract information from the document based on the user's question.
+
+USER QUESTION:
+{question}
+
+DOCUMENT:
+{text}
 
 RULES:
-- Output ONLY valid JSON
+- Return ONLY valid JSON
 - No explanation
 - No markdown
 - No backticks
-- No text before or after JSON
-- Use double quotes
-- No numbering
-- No trailing commas
+- Use structured format
+- Keep output concise and relevant
 
-FORMAT:
+OUTPUT FORMAT:
 {{
-  "key_skills": ["skill1", "skill2", "skill3"]
+  "question": "{question}",
+  "answer": "...",
+  "data": {{}}
 }}
-
-Document:
-{text}
-
-Question:
-{question}
 """
 
     url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
@@ -126,26 +122,38 @@ Question:
     }
 
     try:
-        resp = requests.post(url, headers=headers, json=body, timeout=30)
-        resp.raise_for_status()
-        res_json = resp.json()
-
-        st.subheader("AI Extracted Output")
+        with st.spinner("Processing document..."):
+            resp = requests.post(url, headers=headers, json=body, timeout=30)
+            resp.raise_for_status()
+            res_json = resp.json()
 
         output = res_json["candidates"][0]["content"]["parts"][0]["text"]
         clean_output = clean_json(output)
 
         try:
             parsed = json.loads(clean_output)
-
-            # Save to session
             st.session_state.parsed_data = parsed
 
+            st.subheader("AI Extracted Output")
             st.json(parsed)
 
-            st.markdown("### Key Skills")
-            for skill in parsed.get("key_skills", []):
-                st.write(f"- {skill}")
+            # 🔥 SMART DISPLAY
+            if "data" in parsed:
+                data = parsed["data"]
+
+                st.markdown("### Extracted Information")
+
+                for key, value in data.items():
+                    st.markdown(f"#### {key.capitalize()}")
+
+                    if isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, dict):
+                                st.write(item)
+                            else:
+                                st.write(f"- {item}")
+                    else:
+                        st.write(value)
 
         except json.JSONDecodeError:
             st.error("Response was not valid JSON")
@@ -154,9 +162,8 @@ Question:
     except Exception as e:
         st.error(f"Request error: {e}")
 
-
 # ==============================
-# SEND TO N8N (DISABLED UNTIL VALID)
+# SEND TO N8N
 # ==============================
 send_clicked = st.button(
     "Send Alert Mail",
@@ -191,8 +198,11 @@ if send_clicked:
         response = requests.post(N8N_WEBHOOK_URL, json=payload, timeout=30)
 
         if response.status_code == 200:
-            st.success("✅ Email sent successfully via n8n!")
-            st.write("Response:", response.text)
+            st.success("✅ Report generated and sent successfully to your email.")
+
+            with st.expander("View technical response"):
+                st.code(response.text)
+
         else:
             st.error(f"Webhook failed: {response.status_code}")
             st.write(response.text)
