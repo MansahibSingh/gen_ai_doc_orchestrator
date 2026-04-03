@@ -15,11 +15,27 @@ st.title("AI Document Orchestrator (REST)")
 
 uploaded_file = st.file_uploader("Upload a document", type=["pdf", "txt"])
 question = st.text_input("Ask a question about the document")
-email = st.text_input("Enter your email for report")
+email = st.text_input("Enter your email for report *")
 
-# Store parsed data across button clicks
+# ==============================
+# SESSION STATE
+# ==============================
 if "parsed_data" not in st.session_state:
     st.session_state.parsed_data = None
+
+
+# ==============================
+# EMAIL VALIDATION
+# ==============================
+def is_valid_email(email):
+    pattern = r"^[\w\.-]+@[\w\.-]+\.\w+$"
+    return re.match(pattern, email)
+
+
+# Live validation feedback
+if email:
+    if not is_valid_email(email):
+        st.warning("⚠️ Please enter a valid email address")
 
 
 # ==============================
@@ -140,16 +156,29 @@ Question:
 
 
 # ==============================
-# SEND TO N8N
+# SEND TO N8N (DISABLED UNTIL VALID)
 # ==============================
-if st.button("Send Alert Mail"):
+send_clicked = st.button(
+    "Send Alert Mail",
+    disabled=(
+        not st.session_state.parsed_data or
+        not email or
+        not is_valid_email(email)
+    )
+)
+
+if send_clicked:
 
     if not st.session_state.parsed_data:
         st.error("Please extract data first.")
         st.stop()
 
     if not email:
-        st.error("Please enter your email.")
+        st.error("❌ Email is required.")
+        st.stop()
+
+    if not is_valid_email(email):
+        st.error("❌ Please enter a valid email address.")
         st.stop()
 
     payload = {
