@@ -1,0 +1,149 @@
+{
+  "name": "loan explanation webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "loan-analysis",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        200,
+        0
+      ],
+      "id": "webhook-node",
+      "name": "Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $json.data;\nconst question = $json.question;\n\nconst total = data.length;\nconst badLoans = data.filter(x => x.loan_condition === \"Bad Loan\").length;\nconst badPct = ((badLoans / total) * 100).toFixed(2);\n\nconst highDTI = data.filter(x => parseFloat(x.debt_to_income) > 0.35).length;\n\nreturn [{\n  summary: `Total Loans: ${total}\\nBad Loan %: ${badPct}%\\nHigh DTI Loans: ${highDTI}`,\n  question: question\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        0
+      ],
+      "id": "process-data",
+      "name": "Process Data"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "llama-3.3-70b-versatile",
+          "mode": "list"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a financial risk analyst.\n\nDataset Summary:\n{{$json.summary}}\n\nUser Question:\n{{$json.question}}\n\nTasks:\n1. Answer clearly\n2. Highlight risk factors\n3. Explain patterns simply\n\nFormat in HTML using <br><br>, <b>, and <ul><li>.\n\nEnd with:\n<br><br>Best regards,<br>Risk AI System"
+            }
+          ]
+        },
+        "options": {
+          "store": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        650,
+        0
+      ],
+      "id": "ai-node",
+      "name": "AI Analysis",
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "mansahib.sinngh@gmail.com",
+        "subject": "Loan Risk Analysis Result",
+        "message": "={{ $json.output[0].content[0].text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        900,
+        0
+      ],
+      "id": "email-node",
+      "name": "Send Email",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "YOUR_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"success\" }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        0
+      ],
+      "id": "response-node",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Send Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
